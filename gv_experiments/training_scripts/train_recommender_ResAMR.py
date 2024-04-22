@@ -30,19 +30,29 @@ def main(args):
     seed = args.seed
     # Setup output folders to save results
     output_folder = join("outputs", args.experiment_group, args.experiment_name, str(args.seed))
-    if not exists(output_folder):
-        os.makedirs(output_folder, exist_ok=True)
+
 
     results_folder = join("outputs", args.experiment_group, args.experiment_name + "_recommendations")
-    if not exists(results_folder):
-        os.makedirs(results_folder, exist_ok=True)
 
     experiment_folder = join("outputs", args.experiment_group, args.experiment_name)
+
+    root_folder = config.get("root_folder", None)
+    if root_folder is not None:
+        output_folder = join(root_folder, output_folder)
+        results_folder = join(root_folder, results_folder)
+        experiment_folder = join(root_folder, experiment_folder)
+        
+    if not exists(output_folder):
+        os.makedirs(output_folder, exist_ok=True)
+    if not exists(results_folder):
+        os.makedirs(results_folder, exist_ok=True)
     if exists(join(results_folder, f"test_metrics_{args.seed}.json")):
         sys.exit(0)
     if not exists(experiment_folder):
         os.makedirs(experiment_folder, exist_ok=True)
-
+        
+        
+        
     # Read data
     driams_long_table = pd.read_csv(args.driams_long_table)
     spectra_matrix = np.load(args.spectra_matrix)
@@ -68,7 +78,8 @@ def main(args):
     trainval_df = dsplit.long_table[~dsplit.long_table["sample_id"].isin(test_samples)]
     train_df, val_df = dsplit.baseline_train_test_split(trainval_df, test_size=0.2, random_state=args.seed)
 
-
+    trainval_df.to_csv(join(results_folder, "trainval_set_seed{}.csv".format(seed)), index=False)
+    
     test_spectra = test_df[["species", "sample_id"]].drop_duplicates(subset=["species", "sample_id"]).values.tolist()
     prediction_data = []
 
@@ -143,7 +154,7 @@ def main(args):
     print("Training..")
     trainer = pl.Trainer(devices="auto", accelerator="auto", 
         default_root_dir=output_folder, max_epochs=args.n_epochs#, callbacks=callbacks,
-                        ,limit_train_batches=5
+                        # ,limit_train_batches=5
                         #  logger=tb_logger, log_every_n_steps=3
                          )
     trainer.fit(experiment, train_dataloaders=train_loader,
@@ -188,6 +199,8 @@ if __name__=="__main__":
     parser.add_argument("--fingerprint_class", type=str, default="morgan_1024", choices=["all", "MACCS", "morgan_512", "morgan_1024", "pubchem"])
     parser.add_argument("--fingerprint_size", type=int, default=1024)
 
+    parser.add_argument("--root_folder", type=str,
+                        default="/fast/gvisona/AMR_Pred")
     
 
     parser.add_argument("--n_hidden_layers", type=int, default=5)
@@ -206,6 +219,11 @@ if __name__=="__main__":
         dataset, seed = TRAINING_SETUPS[args.training_setup]
         args.seed = seed
         args.driams_dataset = dataset
+        if dataset=="A":
+            args.spectra_matrix = f"/fast/gvisona/AMR_Pred_backup_moved/data/DRIAMS-{dataset}/spectra_binned_6000_all.npy"
+        else:
+            args.spectra_matrix = f"/fast/gvisona/AMR_Pred_backup_moved/data/DRIAMS-{dataset}/spectra_binned_6000_2018.npy"
+
     args.species_embedding_dim = 0
     
     args.experiment_name = args.experiment_name + f"_DRIAMS-{args.driams_dataset}_recommend"
